@@ -1,0 +1,101 @@
+/* ── Desktop: slides in from the right ── */
+.sidebar {
+  position: fixed;
+  top: 56px; /* below navbar */
+  right: 0;
+  width: 380px;
+  height: calc(100dvh - 56px);
+  background: #fff;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+
+  /* slide-in animation */
+  animation: sidebar-slide-in 0.26s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes sidebar-slide-in {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to   { transform: translateX(0);    opacity: 1;   }
+}
+
+/* Scrollable inner content */
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Close button */
+.sidebar-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 10;
+  background: #f0f1f5;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.sidebar-close:hover { background: #e0e2ea; }
+
+/* Mobile backdrop (behind sidebar, above map) */
+.sidebar-backdrop {
+  display: none;
+}
+
+/* ── Mobile: slides up from the bottom ── */
+@media (max-width: 640px) {
+  .sidebar {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 60dvh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+
+    animation: sidebar-slide-up 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  @keyframes sidebar-slide-up {
+    from { transform: translateY(100%); opacity: 0.6; }
+    to   { transform: translateY(0);    opacity: 1;   }
+  }
+
+  /* drag handle pill */
+  .sidebar::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: #d0d0dc;
+    border-radius: 2px;
+    margin: 10px auto 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 199;
+    animation: backdrop-fade 0.2s ease both;
+  }
+
+  @keyframes backdrop-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}

@@ -1,0 +1,46 @@
+.detail-page {
+  max-width: 480px;
+  margin: 2rem auto;
+  padding: 1rem 1.5rem;
+}
+
+.detail-back {
+  color: #2979ff;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.detail-back:hover {
+  text-decoration: underline;
+}
+
+.detail-name {
+  margin: 1rem 0 0.5rem;
+  font-size: 1.5rem;
+  color: #1a1a2e;
+}
+
+.detail-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-badge--business {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.detail-badge--shelter {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.detail-placeholder {
+  margin-top: 1.5rem;
+  color: #666;
+}
