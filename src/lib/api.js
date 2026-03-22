@@ -1,9 +1,4 @@
 import { supabase } from './supabase';
-import {
-  businesses as fallbackBusinesses,
-  shelters as fallbackShelters,
-  allLocations as fallbackAll,
-} from '../data/locations';
 
 // ── Normalization (DB row → app shape) ──────────────────────────────────────
 
@@ -46,7 +41,7 @@ function normalizeShelters(rows) {
   }));
 }
 
-// ── Public fetch functions (with fallback) ───────────────────────────────────
+// ── Public fetch functions ───────────────────────────────────────────────────
 
 export async function fetchBusinesses() {
   const { data, error } = await supabase
@@ -56,8 +51,8 @@ export async function fetchBusinesses() {
     .order('created_at');
 
   if (error) {
-    console.warn('[SafeWork] Supabase businesses fetch failed, using fallback:', error.message);
-    return fallbackBusinesses;
+    console.error('[SafeWork] Supabase businesses fetch failed:', error.message);
+    return [];
   }
   return normalizeBusinesses(data);
 }
@@ -70,8 +65,8 @@ export async function fetchShelters() {
     .order('created_at');
 
   if (error) {
-    console.warn('[SafeWork] Supabase shelters fetch failed, using fallback:', error.message);
-    return fallbackShelters;
+    console.error('[SafeWork] Supabase shelters fetch failed:', error.message);
+    return [];
   }
   return normalizeShelters(data);
 }
@@ -95,6 +90,5 @@ export async function fetchLocationById(id) {
 
   if (!sErr && sData) return normalizeShelters([sData])[0];
 
-  // Fallback: search hardcoded data by id (covers old short IDs like 'b1')
-  return fallbackAll.find((l) => l.id === id) ?? null;
+  return null;
 }
