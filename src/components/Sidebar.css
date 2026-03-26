@@ -10,8 +10,6 @@
   z-index: 200;
   display: flex;
   flex-direction: column;
-
-  /* slide-in animation */
   animation: sidebar-slide-in 0.26s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
@@ -25,6 +23,7 @@
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* Close button */
@@ -48,54 +47,58 @@
 }
 .sidebar-close:hover { background: #e0e2ea; }
 
-/* Mobile backdrop (behind sidebar, above map) */
+/* Desktop backdrop */
 .sidebar-backdrop {
   display: none;
 }
 
-/* ── Mobile: slides up from the bottom ── */
-@media (max-width: 640px) {
+/* Drag handle — hidden on desktop */
+.sidebar-drag-handle {
+  display: none;
+}
+
+/* ── Mobile: bottom sheet ── */
+@media (max-width: 768px) {
   .sidebar {
     top: auto;
     bottom: 0;
     left: 0;
     right: 0;
     width: 100%;
-    height: 60dvh;
+    height: 90dvh;
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
-
-    animation: sidebar-slide-up 0.28s cubic-bezier(0.4, 0, 0.2, 1) both;
+    /* Animation handled by JS translateY transition — disable CSS animation */
+    animation: none;
+    will-change: transform;
   }
 
-  @keyframes sidebar-slide-up {
-    from { transform: translateY(100%); opacity: 0.6; }
-    to   { transform: translateY(0);    opacity: 1;   }
-  }
-
-  /* drag handle pill */
+  /* Remove pseudo-element pill — replaced by real DOM element */
   .sidebar::before {
-    content: '';
-    display: block;
+    display: none;
+  }
+
+  /* Drag handle touch target */
+  .sidebar-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 28px;
+    flex-shrink: 0;
+    cursor: grab;
+    touch-action: none; /* prevent browser scroll during drag */
+  }
+
+  .sidebar-drag-pill {
     width: 36px;
     height: 4px;
     background: #d0d0dc;
     border-radius: 2px;
-    margin: 10px auto 0;
-    flex-shrink: 0;
   }
 
+  /* No backdrop on mobile — map stays fully interactive */
   .sidebar-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 199;
-    animation: backdrop-fade 0.2s ease both;
-  }
-
-  @keyframes backdrop-fade {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    display: none;
   }
 }
