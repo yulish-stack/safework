@@ -22,11 +22,17 @@ function YesNo({ value, onChange }) {
 // Nominatim (OpenStreetMap) autocomplete — no API key required.
 // Calls onChange(address) and onCoordsChange({lat, lng}) when a suggestion is selected.
 // Clears both when the user edits the field manually.
-function AddressInput({ onChange, onCoordsChange }) {
-  const [inputVal, setInputVal]       = useState('');
+function AddressInput({ onChange, onCoordsChange, initialValue = '', initialCoords = null }) {
+  const [inputVal, setInputVal]       = useState(initialValue);
   const [suggestions, setSuggestions] = useState([]);
   const debounceRef = useRef(null);
   const wrapperRef  = useRef(null);
+
+  // Propagate prefilled address/coords to parent on mount
+  useEffect(() => {
+    if (initialValue)  onChange(initialValue);
+    if (initialCoords) onCoordsChange(initialCoords);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function onOutside(e) {
@@ -98,14 +104,17 @@ function AddressInput({ onChange, onCoordsChange }) {
 
 // ── Business form ─────────────────────────────────────────────────────────────
 
-function BusinessForm({ onSubmit }) {
-  const [name, setName]           = useState('');
-  const [address, setAddress]     = useState('');
-  const [coords, setCoords]       = useState(null);
-  const [website, setWebsite]     = useState('');
+function BusinessForm({ onSubmit, prefill }) {
+  const [name, setName]           = useState(prefill?.name    || '');
+  const [address, setAddress]     = useState(prefill?.address || '');
+  const [coords, setCoords]       = useState(prefill?.coords  || null);
+  const [website, setWebsite]     = useState(prefill?.website || '');
   const [instagram, setInstagram] = useState('');
   const [type, setType]           = useState('café');
-  const [hours, setHours]         = useState(EMPTY_HOURS.map(h => ({ ...h })));
+  const [hours, setHours]         = useState(() => {
+    const filled = (prefill?.hours || []).slice(0, 3);
+    return [...filled, ...Array.from({ length: 3 - filled.length }, () => ({ days: '', time: '' }))];
+  });
   const [wifi, setWifi]           = useState(false);
   const [outlets, setOutlets]     = useState(false);
   const [busy, setBusy]           = useState(false);
@@ -147,7 +156,12 @@ function BusinessForm({ onSubmit }) {
       </label>
 
       <label className="form-label">Address *
-        <AddressInput onChange={setAddress} onCoordsChange={setCoords} />
+        <AddressInput
+          onChange={setAddress}
+          onCoordsChange={setCoords}
+          initialValue={prefill?.address || ''}
+          initialCoords={prefill?.coords  || null}
+        />
       </label>
 
       <label className="form-label">Website <span className="form-hint">(optional)</span>
@@ -208,16 +222,18 @@ function ShelterForm({ onSubmit }) {
     if (!name.trim()) { setErr('Name is required.'); return; }
     if (!coords)      { setErr('Please select an address from the suggestions.'); return; }
     setBusy(true); setErr('');
-    const { error } = await supabase.from('shelters').insert({
+    const shelterData = {
       name:          name.trim(),
       address,
       latitude:      coords.lat,
       longitude:     coords.lng,
       is_accessible: accessible,
       is_public:     isPublic,
-      notes:         notes.trim() || null,
-      is_approved:   false,  // shelters require admin approval
-    });
+      is_approved:   true,
+      source:        'community',
+    };
+    if (notes.trim()) shelterData.notes = notes.trim();
+    const { error } = await supabase.from('shelters').insert(shelterData);
     setBusy(false);
     if (error) { setErr(error.message); return; }
     onSubmit();
@@ -245,7 +261,7 @@ function ShelterForm({ onSubmit }) {
 
       {err && <p className="form-error">{err}</p>}
       <button className="form-submit" type="submit" disabled={busy}>
-        {busy ? 'Submitting…' : 'Submit for review'}
+        {busy ? 'Submitting…' : 'Submit shelter'}
       </button>
     </form>
   );
@@ -253,7 +269,7 @@ function ShelterForm({ onSubmit }) {
 
 // ── Modal shell ───────────────────────────────────────────────────────────────
 
-export default function SubmitModal({ onClose }) {
+export default function SubmitModal({ onClose, prefill }) {
   const [tab, setTab]         = useState('business');
   const [success, setSuccess] = useState(false);
 
@@ -269,8 +285,13 @@ export default function SubmitModal({ onClose }) {
           <div className="modal-success">
             <p className="modal-success__msg">
             {success === 'business'
-              ? '✅ Your location has been added! It will appear on the map after a refresh.'
-              : '✅ Your shelter has been submitted for review.'}
+              ? <>✅ Your location has been added!{' '}
+                  <button
+                    className="modal-refresh-link"
+                    onClick={() => window.location.reload()}
+                  >Tap here to refresh the map →</button>
+                </>
+              : '✅ Shelter submitted for review — thank you!'}
           </p>
             <div className="modal-success__actions">
               <button className="form-submit form-submit--secondary" onClick={() => setSuccess(false)}>Submit another</button>
@@ -285,7 +306,7 @@ export default function SubmitModal({ onClose }) {
             </div>
             <div className="modal-body">
               {tab === 'business'
-                ? <BusinessForm onSubmit={() => setSuccess('business')} />
+                ? <BusinessForm onSubmit={() => setSuccess('business')} prefill={prefill} />
                 : <ShelterForm  onSubmit={() => setSuccess('shelter')} />}
             </div>
           </>

@@ -22,6 +22,13 @@ export default function ShelterDetail({ location, onClose }) {
 
       <p className="detail-address">📍 {location.address}</p>
 
+      {location.source === 'city' && (
+        <p className="shelter-source shelter-source--city">✓ Official city data</p>
+      )}
+      {location.source === 'community' && (
+        <p className="shelter-source shelter-source--community">👤 Unverified — added by a user</p>
+      )}
+
       {/* Info */}
       <section className="detail-section">
         <h2 className="detail-section__title">Details</h2>

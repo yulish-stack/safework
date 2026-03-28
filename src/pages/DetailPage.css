@@ -32,10 +32,18 @@
 }
 
 .detail-address {
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.35rem;
   font-size: 0.875rem;
   color: #555;
 }
+
+/* Shelter source indicator */
+.shelter-source {
+  margin: 0 0 1.25rem;
+  font-size: 0.775rem;
+}
+.shelter-source--city      { color: #2e7d32; }
+.shelter-source--community { color: #999; }
 
 /* Badge */
 .detail-badge {
@@ -115,6 +123,11 @@
 .hours-row:last-child { border-bottom: none; }
 .hours-row__days { color: #444; }
 .hours-row__time { color: #1a1a2e; font-weight: 500; }
+.hours-disclaimer {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  color: #aaa;
+}
 
 /* Amenities */
 .amenity-list {

@@ -46,6 +46,7 @@ export default function BusinessDetail({ location, shelters, onClose, onSelectLo
             </li>
           ))}
         </ul>
+        <p className="hours-disclaimer">* Hours may vary in light of current circumstances</p>
       </section>
 
       {/* 5. Nearest Shelter */}

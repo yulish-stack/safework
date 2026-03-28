@@ -220,6 +220,45 @@
   animation: banner-in 0.15s ease both;
 }
 
+/* ── SafeWork Info Window (injected into google.maps.InfoWindow) ── */
+.siw {
+  padding: 2px 2px 4px;
+  min-width: 160px;
+  max-width: 220px;
+  font-family: inherit;
+}
+.siw__name {
+  margin: 0 0 2px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+.siw__addr {
+  margin: 0 0 8px;
+  font-size: 0.775rem;
+  color: #666;
+}
+.siw__loading {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #999;
+}
+.siw__btn {
+  display: block;
+  width: 100%;
+  padding: 6px 0;
+  background: #1a1a2e;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: center;
+}
+.siw__btn:hover { background: #2e2e4a; }
+
 /* ── Loading overlay ── */
 .map-loading {
   position: absolute;

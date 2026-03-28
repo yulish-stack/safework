@@ -36,8 +36,9 @@ function normalizeShelters(rows) {
     lat: s.latitude,
     lng: s.longitude,
     address: s.address || '',
-    accessible: s.is_accessible ?? false,
+    accessible:  s.is_accessible ?? false,
     designation: s.is_public ? 'public' : 'private',
+    source:      s.source || null,
   }));
 }
 
