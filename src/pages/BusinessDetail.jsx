@@ -17,9 +17,8 @@ const BUSINESS_CATEGORIES = [
  */
 export default function BusinessDetail({ location, shelters, onClose, onSelectLocation, userLocation }) {
   const shelterList = shelters?.length ? shelters : fallbackShelters;
-  // If user's GPS is available, find the shelter nearest to the user; otherwise nearest to the business
-  const origin = userLocation ?? location;
-  const { shelter, metres } = nearestShelter(origin, shelterList);
+  // Always find the shelter nearest to the business itself
+  const { shelter, metres } = nearestShelter(location, shelterList);
   const proximity = proximityLabel(metres);
 
   return (
@@ -52,7 +51,7 @@ export default function BusinessDetail({ location, shelters, onClose, onSelectLo
       {/* 5. Nearest Shelter */}
       <section className="detail-section">
         <h2 className="detail-section__title">
-          {userLocation ? 'Nearest Shelter (from you)' : 'Nearest Shelter'}
+          Nearest Shelter
         </h2>
         {shelter ? (
           <div className={`shelter-card ${proximity.className}`}>
