@@ -231,6 +231,19 @@
 }
 .address-suggestion:hover { background: #f0f4ff; }
 
+/* Mode toggle */
+.mode-toggle {
+  background: none; border: none; padding: 0;
+  font-size: 0.8rem; color: #2979ff; cursor: pointer;
+  text-align: left; align-self: flex-start;
+  margin-top: -0.4rem;
+}
+.mode-toggle:hover { text-decoration: underline; }
+
+/* Google Places suggestion text */
+.place-suggestion__main    { display: block; color: #1a1a2e; }
+.place-suggestion__secondary { display: block; font-size: 0.78rem; color: #888; margin-top: 1px; }
+
 /* Error */
 .form-error {
   margin: 0;

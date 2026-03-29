@@ -11,7 +11,7 @@ function getSnap() {
   return {
     sheetH,
     min: sheetH - 44,                    // 44px visible — drag handle only (hard floor)
-    mid: sheetH - Math.round(vh * 0.33), // ~33vh visible — name/type/address
+    mid: sheetH - Math.round(vh * 0.47), // ~47vh visible — name/address/nearest shelter
     max: 0,                              // ~90vh visible — full content
   };
 }

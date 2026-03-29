@@ -1,12 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { parseHours } from '../lib/parseHours';
 import './SubmitModal.css';
-
-const EMPTY_HOURS = [
-  { days: '', time: '' },
-  { days: '', time: '' },
-  { days: '', time: '' },
-];
 
 // ── Shared components ────────────────────────────────────────────────────────
 
@@ -102,13 +97,124 @@ function AddressInput({ onChange, onCoordsChange, initialValue = '', initialCoor
   );
 }
 
+// ── Google Places helpers ─────────────────────────────────────────────────────
+
+function parseAddressComponents(components) {
+  if (!components?.length) return '';
+  const get = (type) => components.find(c => c.types?.includes(type))?.shortText ?? '';
+  const streetNum = get('street_number');
+  const route     = get('route');
+  const city      = get('locality') || get('administrative_area_level_2') || get('sublocality_level_1');
+  const street    = route ? (streetNum ? `${route} ${streetNum}` : route) : '';
+  if (!street && !city) return '';
+  if (!street) return city;
+  if (!city)   return street;
+  return `${street}, ${city}`;
+}
+
+function PlaceSearchInput({ value, onChange, onSelect }) {
+  const [suggestions, setSuggestions] = useState([]);
+  const debounceRef     = useRef(null);
+  const wrapperRef      = useRef(null);
+  const sessionTokenRef = useRef(null);
+
+  useEffect(() => {
+    function onOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target))
+        setSuggestions([]);
+    }
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('touchstart', onOutside);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('touchstart', onOutside);
+    };
+  }, []);
+
+  function handleChange(e) {
+    const val = e.target.value;
+    onChange(val);
+    clearTimeout(debounceRef.current);
+    setSuggestions([]);
+    if (val.length < 2) return;
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const { AutocompleteSuggestion, AutocompleteSessionToken } =
+          window.google.maps.places;
+
+        if (!sessionTokenRef.current) {
+          sessionTokenRef.current = new AutocompleteSessionToken();
+        }
+
+        const { suggestions: results } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: val,
+          sessionToken: sessionTokenRef.current,
+          locationBias: { center: { lat: 32.0553, lng: 34.7818 }, radius: 50000 },
+          includedRegionCodes: ['il'],
+        });
+        setSuggestions(results ?? []);
+      } catch { /* silently ignore */ }
+    }, 300);
+  }
+
+  async function handleSelect(suggestion) {
+    setSuggestions([]);
+    try {
+      const pred  = suggestion.placePrediction;
+      const place = pred.toPlace();
+      await place.fetchFields({
+        fields: ['displayName', 'addressComponents', 'regularOpeningHours', 'websiteURI', 'googleMapsURI', 'location'],
+      });
+      sessionTokenRef.current = null; // consume token
+      onChange(place.displayName ?? '');
+      onSelect(place);
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="address-field" ref={wrapperRef}>
+      <input
+        className="form-input"
+        value={value}
+        onChange={handleChange}
+        placeholder="Search for a place on Google Maps…"
+        autoComplete="off"
+      />
+      {suggestions.length > 0 && (
+        <ul className="address-suggestions" role="listbox">
+          {suggestions.map((s, i) => {
+            const pred      = s.placePrediction;
+            const main      = pred?.mainText?.toString()      ?? '';
+            const secondary = pred?.secondaryText?.toString() ?? '';
+            return (
+              <li
+                key={i}
+                role="option"
+                className="address-suggestion"
+                onMouseDown={e => { e.preventDefault(); handleSelect(s); }}
+                onTouchEnd={e => { e.preventDefault(); handleSelect(s); }}
+              >
+                <span className="place-suggestion__main">{main}</span>
+                {secondary && <span className="place-suggestion__secondary">{secondary}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ── Business form ─────────────────────────────────────────────────────────────
 
 function BusinessForm({ onSubmit, prefill }) {
+  const [mode, setMode]           = useState(prefill ? 'manual' : 'search');
   const [name, setName]           = useState(prefill?.name    || '');
   const [address, setAddress]     = useState(prefill?.address || '');
   const [coords, setCoords]       = useState(prefill?.coords  || null);
   const [website, setWebsite]     = useState(prefill?.website || '');
+  const [mapsLink, setMapsLink]   = useState('');
   const [instagram, setInstagram] = useState('');
   const [type, setType]           = useState('café');
   const [hours, setHours]         = useState(() => {
@@ -124,13 +230,38 @@ function BusinessForm({ onSubmit, prefill }) {
     setHours(prev => prev.map((row, idx) => idx === i ? { ...row, [field]: val } : row));
   }
 
+  function handlePlaceSelect(place) {
+    setAddress(parseAddressComponents(place.addressComponents));
+    setCoords(place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null);
+    setWebsite(place.websiteURI ?? '');
+    setMapsLink(place.googleMapsURI ?? '');
+    const parsedHours = parseHours(place.regularOpeningHours?.periods ?? []);
+    const filled = parsedHours.slice(0, 3);
+    setHours([...filled, ...Array.from({ length: 3 - filled.length }, () => ({ days: '', time: '' }))]);
+  }
+
+  function switchToManual() {
+    setMode('manual');
+  }
+
+  function switchToSearch() {
+    setMode('search');
+    setName('');
+    setAddress('');
+    setCoords(null);
+    setWebsite('');
+    setMapsLink('');
+    setHours([{ days: '', time: '' }, { days: '', time: '' }, { days: '', time: '' }]);
+    setErr('');
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) { setErr('Name is required.'); return; }
-    if (!coords)      { setErr('Please select an address from the suggestions.'); return; }
+    if (!coords)      { setErr('Please select a place from the search results or enter an address manually.'); return; }
     setBusy(true); setErr('');
     const filledHours = hours.filter(h => h.days.trim() && h.time.trim());
-    const { error } = await supabase.from('businesses').insert({
+    const payload = {
       name:          name.trim(),
       address,
       latitude:      coords.lat,
@@ -142,8 +273,10 @@ function BusinessForm({ onSubmit, prefill }) {
       wifi,
       wifi_quality:  null,
       power_outlets: outlets,
-      is_approved:   true,   // businesses appear on map immediately
-    });
+      is_approved:   true,
+    };
+    if (mapsLink) payload.maps_link = mapsLink;
+    const { error } = await supabase.from('businesses').insert(payload);
     setBusy(false);
     if (error) { setErr(error.message); return; }
     onSubmit();
@@ -152,16 +285,38 @@ function BusinessForm({ onSubmit, prefill }) {
   return (
     <form className="submit-form" onSubmit={handleSubmit}>
       <label className="form-label">Name *
-        <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Coffee House TLV" />
+        {mode === 'search' ? (
+          <PlaceSearchInput value={name} onChange={setName} onSelect={handlePlaceSelect} />
+        ) : (
+          <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Coffee House TLV" />
+        )}
       </label>
+      {mode === 'search' ? (
+        <button type="button" className="mode-toggle" onClick={switchToManual}>
+          Not on Google Maps? Add manually →
+        </button>
+      ) : (
+        <button type="button" className="mode-toggle" onClick={switchToSearch}>
+          ← Search Google Maps
+        </button>
+      )}
 
       <label className="form-label">Address *
-        <AddressInput
-          onChange={setAddress}
-          onCoordsChange={setCoords}
-          initialValue={prefill?.address || ''}
-          initialCoords={prefill?.coords  || null}
-        />
+        {mode === 'search' ? (
+          <input
+            className="form-input"
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            placeholder="Auto-filled from Google Maps"
+          />
+        ) : (
+          <AddressInput
+            onChange={setAddress}
+            onCoordsChange={setCoords}
+            initialValue={prefill?.address || ''}
+            initialCoords={prefill?.coords  || null}
+          />
+        )}
       </label>
 
       <label className="form-label">Website <span className="form-hint">(optional)</span>
@@ -284,17 +439,13 @@ export default function SubmitModal({ onClose, prefill }) {
         {success ? (
           <div className="modal-success">
             <p className="modal-success__msg">
-            {success === 'business'
-              ? <>✅ Your location has been added!{' '}
-                  <button
-                    className="modal-refresh-link"
-                    onClick={() => window.location.reload()}
-                  >Tap here to refresh the map →</button>
-                </>
-              : '✅ Shelter submitted for review — thank you!'}
-          </p>
+              {success === 'business'
+                ? '✅ Your location has been added!'
+                : '✅ Shelter submitted for review — thank you!'}
+            </p>
             <div className="modal-success__actions">
               <button className="form-submit form-submit--secondary" onClick={() => setSuccess(false)}>Submit another</button>
+              <button className="form-submit form-submit--secondary" onClick={() => window.location.reload()}>Refresh map</button>
               <button className="form-submit" onClick={onClose}>Close</button>
             </div>
           </div>
@@ -306,7 +457,7 @@ export default function SubmitModal({ onClose, prefill }) {
             </div>
             <div className="modal-body">
               {tab === 'business'
-                ? <BusinessForm onSubmit={() => setSuccess('business')} prefill={prefill} />
+                ? <BusinessForm key={success} onSubmit={() => setSuccess('business')} prefill={prefill} />
                 : <ShelterForm  onSubmit={() => setSuccess('shelter')} />}
             </div>
           </>

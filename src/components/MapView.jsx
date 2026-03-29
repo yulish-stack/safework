@@ -10,6 +10,7 @@ import { useLocations } from '../hooks/useLocations';
 import Sidebar from './Sidebar';
 import SubmitModal from './SubmitModal';
 import WelcomeModal from './WelcomeModal';
+import { parseHours } from '../lib/parseHours';
 import './MapView.css';
 
 const ISRAEL_CENTER = { lat: 32.0553, lng: 34.7818 };
@@ -35,52 +36,6 @@ function parseShortAddress(formatted) {
   return clean.slice(0, 2).join(', ');
 }
 
-function parseHours(periods) {
-  if (!periods?.length) return [];
-  // Sun=0…Sat=6 using Hebrew abbreviations
-  const DAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
-  const fmt = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-
-  // Collect ALL time-ranges per day (handles split shifts), sort by open time
-  const daySlots = {}; // day → [{ key, str }]
-  for (const p of periods) {
-    if (!p.open) continue;
-    const d = p.open.day;
-    const str = p.close
-      ? `${fmt(p.open.hour, p.open.minute)}-${fmt(p.close.hour, p.close.minute)}`
-      : 'Open 24h';
-    if (!daySlots[d]) daySlots[d] = [];
-    daySlots[d].push({ key: p.open.hour * 60 + p.open.minute, str });
-  }
-
-  // Build day → joined time string (e.g. "12:00-16:00, 18:00-23:00")
-  const dayTime = {};
-  for (const [d, slots] of Object.entries(daySlots)) {
-    slots.sort((a, b) => a.key - b.key);
-    dayTime[d] = slots.map(s => s.str).join(', ');
-  }
-  if (!Object.keys(dayTime).length) return [];
-
-  // Group consecutive days that share an identical time string
-  const rows = [];
-  let start = null, prev = null, time = null;
-  for (let d = 0; d <= 6; d++) {
-    const t = dayTime[d];
-    if (t !== undefined && t === time && d === prev + 1) {
-      prev = d;
-    } else {
-      if (start !== null) rows.push({ start, end: prev, time });
-      if (t !== undefined) { start = d; prev = d; time = t; }
-      else                 { start = null; prev = null; time = null; }
-    }
-  }
-  if (start !== null) rows.push({ start, end: prev, time });
-
-  return rows.slice(0, 3).map(r => ({
-    days: r.start === r.end ? DAYS[r.start] : `${DAYS[r.start]}-${DAYS[r.end]}`,
-    time: r.time,
-  }));
-}
 
 function Marker({ loc, isActive, onClick }) {
   return (
@@ -262,6 +217,27 @@ export default function MapView() {
 
   const [prefill, setPrefill] = useState(null);
 
+  const [mapReady,      setMapReady]      = useState(false);
+  const [initialCenter, setInitialCenter] = useState(ISRAEL_CENTER);
+  const [initialZoom,   setInitialZoom]   = useState(13);
+
+  // Probe for already-granted location before rendering the map so there's no jump.
+  useEffect(() => {
+    if (!navigator?.permissions) { setMapReady(true); return; }
+    navigator.permissions.query({ name: 'geolocation' }).then(perm => {
+      if (perm.state !== 'granted') { setMapReady(true); return; }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setInitialCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setInitialZoom(14);
+          setMapReady(true);
+        },
+        () => setMapReady(true),
+        { enableHighAccuracy: false, maximumAge: 60_000, timeout: 2_000 }
+      );
+    }).catch(() => setMapReady(true));
+  }, []);
+
   const mapRef         = useRef(null);
   const sheetHeightRef = useRef(0);
   const allMarkers     = [...businesses, ...shelters];
@@ -335,10 +311,10 @@ export default function MapView() {
         </div>
       )}
 
-      <APIProvider apiKey={API_KEY} libraries={['places']}>
+      {mapReady && <APIProvider apiKey={API_KEY} libraries={['places']}>
         <Map
-          defaultCenter={ISRAEL_CENTER}
-          defaultZoom={13}
+          defaultCenter={initialCenter}
+          defaultZoom={initialZoom}
           mapId="safework-map"
           gestureHandling="greedy"
           disableDefaultUI={false}
@@ -365,7 +341,7 @@ export default function MapView() {
             />
           ))}
         </Map>
-      </APIProvider>
+      </APIProvider>}
 
       {locationMsg && <div className="location-msg">{locationMsg}</div>}
 

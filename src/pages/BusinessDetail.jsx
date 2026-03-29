@@ -1,6 +1,6 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { shelters as fallbackShelters } from '../data/locations';
-import { nearestShelter, proximityLabel } from '../lib/distance';
+import { getTop3Shelters } from '../lib/shelterDistance';
 import { RatingsSection, CommentsSection } from '../components/SocialSection';
 import './DetailPage.css';
 
@@ -11,15 +11,53 @@ const BUSINESS_CATEGORIES = [
   { label: 'Coffee Quality', key: 'coffee_quality' },
 ];
 
-/**
- * onClose          — provided when rendered inside the Sidebar (hides back link)
- * onSelectLocation — provided by Sidebar to navigate to a shelter without leaving the map
- */
-export default function BusinessDetail({ location, shelters, onClose, onSelectLocation, userLocation }) {
-  const shelterList = shelters?.length ? shelters : fallbackShelters;
-  // Always find the shelter nearest to the business itself
-  const { shelter, metres } = nearestShelter(location, shelterList);
-  const proximity = proximityLabel(metres);
+function walkLabel(mins) {
+  if (mins < 1) return 'Under 1 min walk';
+  return `${Math.round(mins)} min walk`;
+}
+
+function walkProximity(mins) {
+  if (mins < 1.5) return { emoji: '🟢', className: 'shelter-card--close'  };
+  if (mins <= 3)  return { emoji: '🟠', className: 'shelter-card--medium' };
+  return               { emoji: '🔴', className: 'shelter-card--far'    };
+}
+
+export default function BusinessDetail({ location, shelters, onClose, onSelectLocation }) {
+  const shelterList = shelters ?? [];
+  const [topShelters,    setTopShelters]    = useState({ top: null, rest: [] });
+  const [shelterLoading, setShelterLoading] = useState(true);
+  const [expanded,       setExpanded]       = useState(false);
+
+  useEffect(() => {
+    if (!shelterList.length) { setShelterLoading(false); return; }
+    setExpanded(false);
+    setShelterLoading(true);
+    getTop3Shelters(location, shelterList)
+      .then(setTopShelters)
+      .catch(() => setTopShelters({ top: null, rest: [] }))
+      .finally(() => setShelterLoading(false));
+  }, [location.id]); // eslint-disable-line
+
+  function renderShelterCard({ shelter, walkMins, walkMetres }, key) {
+    const prox = walkProximity(walkMins);
+    return (
+      <div key={key} className={`shelter-card ${prox.className}`}>
+        <span className="shelter-card__emoji">{prox.emoji}</span>
+        <div className="shelter-card__info">
+          <p className="shelter-card__name">{shelter.name}</p>
+          <p className="shelter-card__dist">
+            {walkLabel(walkMins)} ({Math.round(walkMetres)}m)
+          </p>
+        </div>
+        {onSelectLocation
+          ? <button className="shelter-card__link shelter-card__btn" onClick={() => onSelectLocation(shelter)}>View →</button>
+          : <Link to={`/location/${shelter.id}`} className="shelter-card__link">View →</Link>
+        }
+      </div>
+    );
+  }
+
+  const { top, rest } = topShelters;
 
   return (
     <div className="detail-page">
@@ -34,7 +72,32 @@ export default function BusinessDetail({ location, shelters, onClose, onSelectLo
       {/* 3. Address */}
       <p className="detail-address">📍 {location.address}</p>
 
-      {/* 4. Opening Hours */}
+      {/* 4. Nearest Shelter — directly below address */}
+      <section className="detail-section">
+        <h2 className="detail-section__title">Nearest Shelter</h2>
+        {shelterLoading ? (
+          <p className="detail-loading">Calculating distance…</p>
+        ) : top ? (
+          <>
+            {renderShelterCard(top, 'top')}
+            {rest.length > 0 && (
+              <div className="more-shelters">
+                <button
+                  className="more-shelters__toggle"
+                  onClick={() => setExpanded(e => !e)}
+                >
+                  See {rest.length} more nearby shelter{rest.length > 1 ? 's' : ''} {expanded ? '▴' : '▾'}
+                </button>
+                {expanded && rest.map((item, i) => renderShelterCard(item, i))}
+              </div>
+            )}
+          </>
+        ) : (
+          <p style={{ color: '#999', fontSize: '0.875rem' }}>No shelter data available.</p>
+        )}
+      </section>
+
+      {/* 5. Opening Hours */}
       <section className="detail-section">
         <h2 className="detail-section__title">Opening Hours</h2>
         <ul className="hours-list">
@@ -46,36 +109,6 @@ export default function BusinessDetail({ location, shelters, onClose, onSelectLo
           ))}
         </ul>
         <p className="hours-disclaimer">* Hours may vary in light of current circumstances</p>
-      </section>
-
-      {/* 5. Nearest Shelter */}
-      <section className="detail-section">
-        <h2 className="detail-section__title">
-          Nearest Shelter
-        </h2>
-        {shelter ? (
-          <div className={`shelter-card ${proximity.className}`}>
-            <span className="shelter-card__emoji">{proximity.emoji}</span>
-            <div className="shelter-card__info">
-              <p className="shelter-card__name">{shelter.name}</p>
-              <p className="shelter-card__dist">{metres.toLocaleString()} m away · {proximity.label}</p>
-            </div>
-            {onSelectLocation
-              ? (
-                <button className="shelter-card__link shelter-card__btn" onClick={() => onSelectLocation(shelter)}>
-                  View →
-                </button>
-              )
-              : (
-                <Link to={`/location/${shelter.id}`} className="shelter-card__link">
-                  View →
-                </Link>
-              )
-            }
-          </div>
-        ) : (
-          <p style={{ color: '#999', fontSize: '0.875rem' }}>No shelter data available.</p>
-        )}
       </section>
 
       {/* 6. Amenities */}
