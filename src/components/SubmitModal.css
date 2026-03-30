@@ -251,6 +251,32 @@
   color: #c62828;
 }
 
+/* Duplicate warning */
+.dup-warning {
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.dup-warning__msg {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #5d4037;
+  line-height: 1.4;
+}
+.dup-warning__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.dup-warning__actions .form-submit {
+  flex: 1;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+}
+
 /* Submit button */
 .form-submit {
   padding: 0.65rem 1.25rem;

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { parseHours } from '../lib/parseHours';
+import { haversineMetres } from '../lib/distance';
 import './SubmitModal.css';
 
 // ── Shared components ────────────────────────────────────────────────────────
@@ -225,6 +226,7 @@ function BusinessForm({ onSubmit, prefill }) {
   const [outlets, setOutlets]     = useState(false);
   const [busy, setBusy]           = useState(false);
   const [err, setErr]             = useState('');
+  const [dupWarning, setDupWarning] = useState(null); // { msg, onConfirm }
 
   function updateHour(i, field, val) {
     setHours(prev => prev.map((row, idx) => idx === i ? { ...row, [field]: val } : row));
@@ -255,11 +257,67 @@ function BusinessForm({ onSubmit, prefill }) {
     setErr('');
   }
 
+  async function doInsert(payload) {
+    setBusy(true); setErr(''); setDupWarning(null);
+    const { error } = await supabase.from('businesses').insert(payload);
+    setBusy(false);
+    if (error) { setErr(error.message); return; }
+    onSubmit();
+  }
+
+  async function checkDuplicates(payload) {
+    const { data: all } = await supabase
+      .from('businesses')
+      .select('name, address, latitude, longitude');
+    if (!all?.length) return null;
+
+    const norm = (s) => (s ?? '').toLowerCase().replace(/[\s\p{P}]/gu, '');
+    const subName  = norm(payload.name);
+    const subAddr  = norm(payload.address);
+    // Extract first street-word from address for loose street matching
+    const subStreet = (payload.address ?? '').split(/[\s,]/)[0].toLowerCase();
+
+    let topScore = 0;
+    let topMatch = null;
+
+    for (const b of all) {
+      let score = 0;
+      const bName = norm(b.name);
+
+      // Name scoring
+      if (bName === subName) {
+        score += 3;
+      } else if (bName.includes(subName) || subName.includes(bName)) {
+        score += 2;
+      } else if (subName.length >= 4 && bName.length >= 4 && bName.slice(0, 4) === subName.slice(0, 4)) {
+        score += 1;
+      }
+
+      // Distance scoring
+      if (b.latitude != null && b.longitude != null) {
+        const dist = haversineMetres(payload.latitude, payload.longitude, b.latitude, b.longitude);
+        if (dist <= 100)      score += 3;
+        else if (dist <= 300) score += 2;
+      }
+
+      // Address street-name scoring
+      const bStreet = (b.address ?? '').split(/[\s,]/)[0].toLowerCase();
+      if (subStreet && bStreet && subStreet === bStreet) score += 2;
+
+      if (score > topScore) { topScore = score; topMatch = b; }
+    }
+
+    if (topScore >= 4) return {
+      msg: `This place might already be in SafeWork: ${topMatch.name} at ${topMatch.address}`,
+    };
+    return null;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name.trim()) { setErr('Name is required.'); return; }
     if (!coords)      { setErr('Please select a place from the search results or enter an address manually.'); return; }
-    setBusy(true); setErr('');
+
     const filledHours = hours.filter(h => h.days.trim() && h.time.trim());
     const payload = {
       name:          name.trim(),
@@ -276,10 +334,17 @@ function BusinessForm({ onSubmit, prefill }) {
       is_approved:   true,
     };
     if (mapsLink) payload.maps_link = mapsLink;
-    const { error } = await supabase.from('businesses').insert(payload);
+
+    setBusy(true); setErr('');
+    const dup = await checkDuplicates(payload);
     setBusy(false);
-    if (error) { setErr(error.message); return; }
-    onSubmit();
+
+    if (dup) {
+      setDupWarning({ msg: dup.msg, onConfirm: () => doInsert(payload) });
+      return;
+    }
+
+    await doInsert(payload);
   }
 
   return (
@@ -353,9 +418,23 @@ function BusinessForm({ onSubmit, prefill }) {
       </div>
 
       {err && <p className="form-error">{err}</p>}
-      <button className="form-submit" type="submit" disabled={busy}>
-        {busy ? 'Submitting…' : 'Submit location'}
-      </button>
+      {dupWarning ? (
+        <div className="dup-warning">
+          <p className="dup-warning__msg">{dupWarning.msg}</p>
+          <div className="dup-warning__actions">
+            <button type="button" className="form-submit form-submit--secondary" onClick={() => setDupWarning(null)} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="form-submit" onClick={dupWarning.onConfirm} disabled={busy}>
+              {busy ? 'Submitting…' : 'Add anyway'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="form-submit" type="submit" disabled={busy}>
+          {busy ? 'Checking…' : 'Submit location'}
+        </button>
+      )}
     </form>
   );
 }
