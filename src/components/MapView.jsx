@@ -11,6 +11,7 @@ import Sidebar from './Sidebar';
 import SubmitModal from './SubmitModal';
 import WelcomeModal from './WelcomeModal';
 import { parseHours } from '../lib/parseHours';
+import { haversineMetres } from '../lib/distance';
 import './MapView.css';
 
 const ISRAEL_CENTER = { lat: 32.0553, lng: 34.7818 };
@@ -281,6 +282,24 @@ export default function MapView() {
     }
   }
 
+  function handleNearestShelter() {
+    if (locationStatus !== 'granted' || !userLocation) {
+      setLocationMsg('Enable location in your browser settings to use this feature.');
+      setTimeout(() => setLocationMsg(''), 3000);
+      return;
+    }
+    if (!shelters.length) return;
+    let nearest = null, minDist = Infinity;
+    for (const s of shelters) {
+      const d = haversineMetres(userLocation.lat, userLocation.lng, s.lat, s.lng);
+      if (d < minDist) { minDist = d; nearest = s; }
+    }
+    if (nearest) {
+      mapRef.current?.setZoom(16);
+      handleSelectLocation(nearest);
+    }
+  }
+
   function handleMyLocation() {
     if (locationStatus === 'granted' && userLocation) {
       mapRef.current?.panTo(userLocation);
@@ -344,6 +363,16 @@ export default function MapView() {
       </APIProvider>}
 
       {locationMsg && <div className="location-msg">{locationMsg}</div>}
+
+      <button
+        className={`nearest-shelter-btn${!shelters.length ? ' nearest-shelter-btn--loading' : ''}`}
+        onClick={handleNearestShelter}
+        disabled={!shelters.length}
+        aria-label="Find nearest shelter"
+      >
+        <img src="/icons/shelter-door.png" alt="" className="nearest-shelter-btn__icon" />
+        Nearest Shelter
+      </button>
 
       {selected && (
         <Sidebar

@@ -58,6 +58,17 @@
 .detail-badge--business { background: #e3f2fd; color: #1565c0; }
 .detail-badge--shelter  { background: #fff3e0; color: #e65100; }
 
+/* Directions pin icon — larger than other link icons, not greyed */
+.links-icon--pin {
+  width: 18px;
+  height: 18px;
+  color: unset;
+}
+/* Compact inline links-list (e.g. directions row) */
+.links-list--inline {
+  margin-bottom: 0.5rem;
+}
+
 /* Links (website / Instagram) */
 .links-list {
   list-style: none;

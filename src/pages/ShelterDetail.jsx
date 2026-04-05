@@ -22,6 +22,24 @@ export default function ShelterDetail({ location, onClose }) {
 
       <p className="detail-address">📍 {location.address}</p>
 
+      {/* Get Directions */}
+      <ul className="links-list links-list--inline">
+        <li className="links-row">
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${location.address ? encodeURIComponent(location.address) : `${location.lat},${location.lng}`}`}
+            target="_blank"
+            rel="noreferrer"
+            className="links-anchor"
+            aria-label="Get directions"
+          >
+            <svg className="links-icon links-icon--pin" viewBox="0 0 24 24" fill="#EA4335" aria-hidden="true">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+            </svg>
+            Directions
+          </a>
+        </li>
+      </ul>
+
       {location.source === 'city' && (
         <p className="shelter-source shelter-source--city">✓ Official city data</p>
       )}
