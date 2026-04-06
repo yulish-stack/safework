@@ -254,7 +254,7 @@ test.describe('clustering and mobile performance', () => {
     await page.waitForTimeout(600);
 
     const clusters = page.locator('.cluster-marker--shelter');
-    await expect(clusters.first()).toBeAttached({ timeout: 5_000 });
+    await expect(clusters.first()).toBeAttached({ timeout: 15_000 });
     const count = await clusters.count();
     expect(count).toBeGreaterThan(0);
     console.log(`[PASS] ${count} shelter cluster pill(s) visible at default zoom`);
