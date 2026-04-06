@@ -206,3 +206,143 @@ test('no red console errors on the map page', async ({ page }) => {
 
   expect(real).toHaveLength(0);
 });
+
+// ── 10-14. Clustering & mobile performance ────────────────────────────────────
+//
+// Run in a dedicated describe block using iPhone Chrome emulation (375×812,
+// touch events, mobile UA) — matches the exact device the user reported lag on.
+
+test.describe('clustering and mobile performance', () => {
+  test.use({
+    viewport:  { width: 375, height: 812 },
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1',
+    hasTouch:  true,
+    isMobile:  true,
+  });
+
+  // ── 10. Clustering reduces individual marker DOM count ─────────────────────
+
+  test('total individual marker count on load is well under the full 543+48', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('safework_welcome_seen', 'true'));
+    await page.goto(BASE_URL);
+    await page.waitForSelector('div[aria-label="Map"]', { timeout: 20_000 });
+
+    // Wait for shelters to load (Nearest Shelter button becomes enabled)
+    await page.waitForSelector('.nearest-shelter-btn:not([disabled])', { timeout: 25_000 });
+    // Let BoundsTracker debounce settle (300ms) + some render time
+    await page.waitForTimeout(800);
+
+    const individualMarkers = await page.locator('.marker-wrapper').count();
+    const clusterMarkers    = await page.locator('.cluster-marker--shelter').count();
+
+    console.log(`[INFO] Individual markers in DOM: ${individualMarkers}`);
+    console.log(`[INFO] Shelter cluster pills: ${clusterMarkers}`);
+
+    // Without clustering: 543 shelters + 48 businesses = 591 markers.
+    // With clustering + viewport filtering, individual count must be much less.
+    expect(individualMarkers).toBeLessThan(100);
+    // At least one cluster must be visible (proves clustering is active)
+    expect(clusterMarkers).toBeGreaterThan(0);
+  });
+
+  // ── 11. Cluster pills are visible at default zoom ─────────────────────────
+
+  test('shelter cluster pills are visible on the map at default zoom', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('safework_welcome_seen', 'true'));
+    await page.goto(BASE_URL);
+    await page.waitForSelector('.nearest-shelter-btn:not([disabled])', { timeout: 25_000 });
+    await page.waitForTimeout(600);
+
+    const clusters = page.locator('.cluster-marker--shelter');
+    await expect(clusters.first()).toBeAttached({ timeout: 5_000 });
+    const count = await clusters.count();
+    expect(count).toBeGreaterThan(0);
+    console.log(`[PASS] ${count} shelter cluster pill(s) visible at default zoom`);
+  });
+
+  // ── 12. Zooming in splits a cluster into individual markers ───────────────
+
+  test('zooming in to zoom 17 splits clusters into individual shelter markers', async ({ page, context }) => {
+    await page.addInitScript(() => localStorage.setItem('safework_welcome_seen', 'true'));
+    // Give a fixed location in a known shelter-dense area (central Tel Aviv)
+    await context.grantPermissions(['geolocation']);
+    await context.setGeolocation({ latitude: 32.0700, longitude: 34.7800 });
+
+    await page.goto(BASE_URL);
+    await page.waitForSelector('.nearest-shelter-btn:not([disabled])', { timeout: 25_000 });
+    await page.waitForTimeout(600);
+
+    const clustersAtDefault = await page.locator('.cluster-marker--shelter').count();
+    console.log(`[INFO] Clusters at default zoom: ${clustersAtDefault}`);
+
+    // Programmatically zoom to 17 (individual markers become visible)
+    await page.evaluate(() => {
+      const mapEl = document.querySelector('div[aria-label="Map"]');
+      // Access the underlying Google Maps instance via @vis.gl/react-google-maps' data attr
+      // Fallback: dispatch a zoomTo helper via the window
+      if (window.__safeworkMap) {
+        window.__safeworkMap.setZoom(17);
+      }
+    });
+
+    // More reliable: use the Nearest Shelter button which calls setZoom(16) + panTo
+    await page.waitForTimeout(1500);
+    await page.click('.nearest-shelter-btn');
+    await page.waitForTimeout(1500); // allow clusterer to re-render at zoom 16
+
+    const individualSheltersAfter = await page.locator('.marker-wrapper--shelter').count();
+    const clustersAfter           = await page.locator('.cluster-marker--shelter').count();
+
+    console.log(`[INFO] After zoom-in — individual shelters: ${individualSheltersAfter}, clusters: ${clustersAfter}`);
+
+    // At zoom 16 in a dense area, we should see individual shelter markers
+    expect(individualSheltersAfter).toBeGreaterThan(0);
+    console.log('[PASS] Individual shelter markers visible after zooming in');
+  });
+
+  // ── 13. No new console errors from clustering changes ─────────────────────
+
+  test('no console errors introduced by clustering (mobile)', async ({ page }) => {
+    const errors = [];
+    page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+
+    await page.addInitScript(() => localStorage.setItem('safework_welcome_seen', 'true'));
+    await page.goto(BASE_URL);
+    await page.waitForSelector('.nearest-shelter-btn:not([disabled])', { timeout: 25_000 });
+    await page.waitForTimeout(800);
+
+    const noise = [/favicon/i, /ResizeObserver/i, /non-passive/i];
+    const real  = errors.filter(m => !noise.some(r => r.test(m)));
+
+    if (real.length) real.forEach(e => console.error('[CLUSTER ERROR]', e));
+    else console.log('[PASS] No console errors on mobile with clustering');
+
+    expect(real).toHaveLength(0);
+  });
+
+  // ── 14. Map is interactive after the 300ms debounce settles ──────────────
+
+  test('map is still interactive after debounce settles (300ms+)', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('safework_welcome_seen', 'true'));
+    await page.goto(BASE_URL);
+    await page.waitForSelector('div[aria-label="Map"]', { timeout: 20_000 });
+
+    // Wait well past the 300ms debounce
+    await page.waitForTimeout(700);
+
+    // Map container must still be visible and attached
+    await expect(page.locator('div[aria-label="Map"]')).toBeVisible();
+
+    // Nearest Shelter button must be interactive (enabled once shelters loaded)
+    await page.waitForSelector('.nearest-shelter-btn:not([disabled])', { timeout: 15_000 });
+    await expect(page.locator('.nearest-shelter-btn')).toBeVisible();
+
+    // Map/Satellite toggle buttons must be visible (injected into map.controls)
+    const satelliteBtn = page.locator('.map-type-btn', { hasText: 'Satellite' });
+    await expect(satelliteBtn).toBeVisible({ timeout: 5_000 });
+    const roadmapBtn = page.locator('.map-type-btn', { hasText: 'Map' });
+    await expect(roadmapBtn).toBeVisible({ timeout: 2_000 });
+
+    console.log('[PASS] Map is fully interactive after debounce settles');
+  });
+});

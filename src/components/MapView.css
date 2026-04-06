@@ -326,3 +326,27 @@
   flex-shrink: 0;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Shelter cluster pills ── */
+.cluster-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  line-height: 1;
+  user-select: none;
+  transition: transform 0.12s ease;
+}
+.cluster-marker:hover { transform: scale(1.1); }
+.cluster-marker--shelter      { background: #FF6B35; }
+.cluster-marker--shelter:hover { background: #e85a25; }
+
+/* Three sizes based on count class added in the renderer */
+.cluster-marker--sm { width: 36px; height: 36px; font-size: 0.8rem; }
+.cluster-marker--md { width: 44px; height: 44px; font-size: 0.85rem; }
+.cluster-marker--lg { width: 52px; height: 52px; font-size: 0.9rem; }

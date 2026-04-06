@@ -14,6 +14,7 @@
     "test:ci": "vitest run --reporter=verbose && playwright test --reporter=github"
   },
   "dependencies": {
+    "@googlemaps/markerclusterer": "^2.6.2",
     "@supabase/supabase-js": "^2.99.2",
     "@vis.gl/react-google-maps": "^1.7.1",
     "react": "^19.2.4",

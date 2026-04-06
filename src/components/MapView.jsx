@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   APIProvider,
-  Map,
+  Map as GoogleMap,
   AdvancedMarker,
   useMap,
 } from '@vis.gl/react-google-maps';
+import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import { useLocations } from '../hooks/useLocations';
 import Sidebar from './Sidebar';
 import SubmitModal from './SubmitModal';
@@ -37,6 +38,7 @@ function parseShortAddress(formatted) {
   return clean.slice(0, 2).join(', ');
 }
 
+// ── Business marker (React component — only rendered for viewport-visible businesses) ──
 
 function Marker({ loc, isActive, onClick }) {
   return (
@@ -58,6 +60,119 @@ function UserLocationMarker({ location }) {
       </div>
     </AdvancedMarker>
   );
+}
+
+// ── ShelterClusterer — imperative markers + MarkerClusterer (no per-shelter React component) ──
+//
+// Creates google.maps.marker.AdvancedMarkerElement instances directly so that
+// React never reconciles 543 individual marker components. The MarkerClusterer
+// handles show/hide per viewport and groups nearby shelters into cluster pills.
+
+function ShelterClusterer({ shelters, selected, onSelect }) {
+  const map          = useMap();
+  const clustererRef = useRef(null);
+  // Map of shelter.id → { marker: AdvancedMarkerElement, pin: HTMLElement }
+  const markerMapRef = useRef(new Map());
+  const onSelectRef  = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  // Build the clusterer once when map and shelters are available
+  useEffect(() => {
+    if (!map || !shelters.length) return;
+    const AME = window.google?.maps?.marker?.AdvancedMarkerElement;
+    if (!AME) return;
+
+    // Tear down any previous clusterer
+    clustererRef.current?.clearMarkers();
+    markerMapRef.current.forEach(({ marker }) => { marker.map = null; });
+    markerMapRef.current.clear();
+
+    const markers = shelters.map(shelter => {
+      const pin = document.createElement('div');
+      pin.className = 'marker-wrapper marker-wrapper--shelter';
+      pin.innerHTML =
+        `<img src="/icons/shelter-door.png" alt="shelter" class="marker-pin">` +
+        `<span class="marker-label">${escapeHtml(shelter.name)}</span>`;
+
+      const marker = new AME({
+        position: { lat: shelter.lat, lng: shelter.lng },
+        content:  pin,
+        title:    shelter.name,
+      });
+      marker.addListener('click', () => onSelectRef.current(shelter));
+
+      markerMapRef.current.set(shelter.id, { marker, pin });
+      return marker;
+    });
+
+    clustererRef.current = new MarkerClusterer({
+      map,
+      markers,
+      renderer: {
+        render({ count, position }) {
+          const AME2 = window.google.maps.marker.AdvancedMarkerElement;
+          const sizeClass = count >= 100 ? 'cluster-marker--lg'
+                          : count >= 20  ? 'cluster-marker--md'
+                          :                'cluster-marker--sm';
+          const el = document.createElement('div');
+          el.className = `cluster-marker cluster-marker--shelter ${sizeClass}`;
+          el.textContent = count;
+          return new AME2({ position, content: el, zIndex: 100 + count });
+        },
+      },
+    });
+
+    return () => {
+      clustererRef.current?.clearMarkers();
+      clustererRef.current = null;
+      markerMapRef.current.forEach(({ marker }) => { marker.map = null; });
+      markerMapRef.current.clear();
+    };
+  }, [map, shelters]); // eslint-disable-line
+
+  // Update active class in-place without rebuilding markers
+  useEffect(() => {
+    markerMapRef.current.forEach(({ pin }, id) => {
+      pin.classList.toggle('marker-wrapper--active', id === selected?.id);
+    });
+  }, [selected]);
+
+  return null;
+}
+
+// ── BoundsTracker — debounced bounds_changed, no React state on every pixel ──
+
+function BoundsTracker({ onBoundsChange }) {
+  const map        = useMap();
+  const callbackRef = useRef(onBoundsChange);
+  callbackRef.current = onBoundsChange;
+
+  useEffect(() => {
+    if (!map) return;
+    let timer;
+    const update = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const b = map.getBounds();
+        if (b) callbackRef.current(b);
+      }, 300);
+    };
+
+    // Seed initial bounds once map has finished rendering
+    const initTimer = setTimeout(() => {
+      const b = map.getBounds();
+      if (b) callbackRef.current(b);
+    }, 100);
+
+    const listener = map.addListener('bounds_changed', update);
+    return () => {
+      window.google.maps.event.removeListener(listener);
+      clearTimeout(timer);
+      clearTimeout(initTimer);
+    };
+  }, [map]);
+
+  return null;
 }
 
 /**
@@ -222,6 +337,17 @@ export default function MapView() {
   const [initialCenter, setInitialCenter] = useState(ISRAEL_CENTER);
   const [initialZoom,   setInitialZoom]   = useState(13);
 
+  // Debounced viewport bounds — used to filter visible businesses
+  const [mapBounds, setMapBounds] = useState(null);
+  const handleBoundsChange = useCallback(b => setMapBounds(b), []);
+
+  // Only render businesses that are inside the current viewport bounds.
+  // Falls back to all businesses before bounds are available (first render).
+  const visibleBusinesses = useMemo(() => {
+    if (!mapBounds) return businesses;
+    return businesses.filter(b => mapBounds.contains({ lat: b.lat, lng: b.lng }));
+  }, [businesses, mapBounds]);
+
   // Probe for already-granted location before rendering the map so there's no jump.
   useEffect(() => {
     if (!navigator?.permissions) { setMapReady(true); return; }
@@ -241,7 +367,6 @@ export default function MapView() {
 
   const mapRef         = useRef(null);
   const sheetHeightRef = useRef(0);
-  const allMarkers     = [...businesses, ...shelters];
 
   useEffect(() => {
     const mq      = window.matchMedia(`(max-width: ${MOBILE_BP}px)`);
@@ -331,7 +456,7 @@ export default function MapView() {
       )}
 
       {mapReady && <APIProvider apiKey={API_KEY} libraries={['places']}>
-        <Map
+        <GoogleMap
           defaultCenter={initialCenter}
           defaultZoom={initialZoom}
           mapId="safework-map"
@@ -350,8 +475,20 @@ export default function MapView() {
             onSubmit={() => setSubmitOpen(true)}
             onPlaceAdd={(data) => { setPrefill(data); setSubmitOpen(true); }}
           />
+
+          {/* Debounced bounds tracker — drives visibleBusinesses */}
+          <BoundsTracker onBoundsChange={handleBoundsChange} />
+
+          {/* Imperative shelter markers + clustering (no React per-shelter component) */}
+          <ShelterClusterer
+            shelters={shelters}
+            selected={selected}
+            onSelect={handleSelectLocation}
+          />
+
+          {/* Business markers — only those in the current viewport */}
           {userLocation && <UserLocationMarker location={userLocation} />}
-          {allMarkers.map((loc) => (
+          {visibleBusinesses.map((loc) => (
             <Marker
               key={loc.id}
               loc={loc}
@@ -359,7 +496,7 @@ export default function MapView() {
               onClick={(e) => { e.stop(); handleSelectLocation(loc); }}
             />
           ))}
-        </Map>
+        </GoogleMap>
       </APIProvider>}
 
       {locationMsg && <div className="location-msg">{locationMsg}</div>}

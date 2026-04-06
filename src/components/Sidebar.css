@@ -21,6 +21,7 @@
 /* Scrollable inner content */
 .sidebar-scroll {
   flex: 1;
+  min-height: 0; /* allow flex child to shrink below content size */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -60,17 +61,19 @@
 /* ── Mobile: bottom sheet ── */
 @media (max-width: 768px) {
   .sidebar {
-    top: auto;
+    /* top is set by JS inline style; 100dvh is the off-screen default */
+    top: 100dvh;
     bottom: 0;
     left: 0;
     right: 0;
     width: 100%;
-    height: 90dvh;
+    /* height is automatic: stretches from `top` to `bottom: 0` */
+    height: auto;
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
-    /* Animation handled by JS translateY transition — disable CSS animation */
+    /* Animation handled by JS `top` transition — disable CSS animation */
     animation: none;
-    will-change: transform;
+    will-change: top;
   }
 
   /* Remove pseudo-element pill — replaced by real DOM element */
@@ -87,7 +90,7 @@
     height: 28px;
     flex-shrink: 0;
     cursor: grab;
-    touch-action: none; /* prevent browser scroll during drag */
+    touch-action: none; /* prevent browser scroll/pan during handle drag */
   }
 
   .sidebar-drag-pill {

@@ -4,52 +4,69 @@ import ShelterDetail from '../pages/ShelterDetail';
 import './Sidebar.css';
 
 const MOBILE_BP = 768;
+const HANDLE_H  = 28;  // .sidebar-drag-handle height (px)
+const MAX_TOP   = 16;  // card top never rises above 16px from screen top
 
-function getSnap() {
-  const vh = window.innerHeight;
-  const sheetH = Math.round(vh * 0.90);
-  return {
-    sheetH,
-    min: sheetH - 44,                    // 44px visible — drag handle only (hard floor)
-    mid: sheetH - Math.round(vh * 0.47), // ~47vh visible — name/address/nearest shelter
-    max: 0,                              // ~90vh visible — full content
-  };
+function getMinTop() {
+  // 60px always visible: 28px handle + ~32px so the pill is always grabbable
+  return window.innerHeight - 60;
 }
 
 export default function Sidebar({ location, shelters, onClose, onSelectLocation, onSheetHeightChange, userLocation }) {
-  const mobile  = window.innerWidth <= MOBILE_BP;
-  const snap    = useRef(getSnap());
+  const mobile = window.innerWidth <= MOBILE_BP;
 
-  const [translateY, setTranslateY] = useState(mobile ? snap.current.sheetH : 0);
-  const [dragging,   setDragging]   = useState(false);
+  // sheetTop: CSS `top` value (px from viewport top).
+  // Higher value = card lower on screen.
+  // Starts fully off-screen so the slide-in animation plays on mount.
+  const [sheetTop, setSheetTop] = useState(mobile ? window.innerHeight : 0);
+  const [dragging, setDragging] = useState(false);
 
   const isDragging = useRef(false);
   const startY     = useRef(0);
-  const startTY    = useRef(0);
+  const startTop   = useRef(0);
   const scrollRef  = useRef(null);
 
-  // Slide up on initial mount
+  // Measure where the card top should be so the Directions button bottom is
+  // just visible (+ 20px breathing room).  offsetTop of .links-list--inline
+  // is relative to .sidebar (the nearest positioned ancestor), so it already
+  // includes the drag-handle height.
+  function measureInitialTop() {
+    if (!scrollRef.current) return getMinTop();
+    const directionsRow = scrollRef.current.querySelector('.links-list--inline');
+    if (!directionsRow) return getMinTop();
+    const contentBottom = directionsRow.offsetTop + directionsRow.offsetHeight;
+    const neededH = contentBottom + 20;
+    const vh = window.innerHeight;
+    return Math.max(MAX_TOP, Math.min(getMinTop(), vh - neededH));
+  }
+
+  // Slide in on mount
   useEffect(() => {
     if (!mobile) return;
+    let raf2;
     const raf1 = requestAnimationFrame(() => {
-      const raf2 = requestAnimationFrame(() => setTranslateY(snap.current.mid));
-      return () => cancelAnimationFrame(raf2);
+      raf2 = requestAnimationFrame(() => setSheetTop(measureInitialTop()));
     });
-    return () => cancelAnimationFrame(raf1);
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
   }, []); // eslint-disable-line
 
-  // Reset snap and scroll position when the viewed location changes
+  // Reset position and scroll when the viewed location changes
   useEffect(() => {
-    if (mobile) setTranslateY(snap.current.mid);
+    if (!mobile) return;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    let raf2;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setSheetTop(measureInitialTop()));
+    });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
   }, [location.id]); // eslint-disable-line
 
   // Notify MapView of the current visible sheet height
   useEffect(() => {
     if (mobile && onSheetHeightChange) {
-      onSheetHeightChange(snap.current.sheetH - translateY);
+      onSheetHeightChange(window.innerHeight - sheetTop);
     }
-  }, [translateY]); // eslint-disable-line
+  }, [sheetTop]); // eslint-disable-line
 
   // Lock body scroll on desktop only
   useEffect(() => {
@@ -61,18 +78,18 @@ export default function Sidebar({ location, shelters, onClose, onSelectLocation,
   // ── Drag handlers ──────────────────────────────────────────────────────────
 
   function onTouchStart(e) {
-    isDragging.current  = true;
+    isDragging.current = true;
     setDragging(true);
-    startY.current  = e.touches[0].clientY;
-    startTY.current = translateY;
+    startY.current   = e.touches[0].clientY;
+    startTop.current = sheetTop;
   }
 
   function onTouchMove(e) {
     if (!isDragging.current) return;
     const delta   = e.touches[0].clientY - startY.current;
-    // Hard floor: never let translateY exceed sheetH - 44 (44px always visible)
-    const clamped = Math.max(0, Math.min(snap.current.sheetH - 44, startTY.current + delta));
-    setTranslateY(clamped);
+    const minTop  = getMinTop();
+    const clamped = Math.max(MAX_TOP, Math.min(minTop, startTop.current + delta));
+    setSheetTop(clamped);
   }
 
   function onTouchEnd(e) {
@@ -80,33 +97,19 @@ export default function Sidebar({ location, shelters, onClose, onSelectLocation,
     isDragging.current = false;
     setDragging(false);
 
-    const endY  = e.changedTouches[0].clientY;
-    const delta = endY - startY.current;
-    const cur   = Math.min(startTY.current + delta, snap.current.sheetH - 44);
-    const { min, mid, max } = snap.current;
+    const delta  = e.changedTouches[0].clientY - startY.current;
+    const minTop = getMinTop();
+    const cur    = Math.max(MAX_TOP, Math.min(minTop, startTop.current + delta));
 
-    if (delta > 60) {
-      // Fast downward flick
-      setTranslateY(cur > (mid + min) / 2 ? min : mid);
-    } else if (delta < -60) {
-      // Fast upward flick
-      setTranslateY(cur < mid / 2 ? max : mid);
-    } else {
-      // Nearest snap
-      const nearest = [
-        [min, Math.abs(cur - min)],
-        [mid, Math.abs(cur - mid)],
-        [max, Math.abs(cur - max)],
-      ].sort((a, b) => a[1] - b[1])[0][0];
-      setTranslateY(nearest);
-    }
+    // Pure free positioning — stay exactly where the finger released
+    setSheetTop(cur);
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const sheetStyle = mobile ? {
-    transform:  `translateY(${translateY}px)`,
-    transition: dragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    top:        `${sheetTop}px`,
+    transition: dragging ? 'none' : 'top 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
   } : {};
 
   return (
